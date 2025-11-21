@@ -8,8 +8,6 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# --- 1. ตั้งค่า Gemini ---
-# แนะนำให้ใส่ API Key ตรงนี้ หรือเก็บใน Environment Variable
 GENAI_API_KEY = "AIzaSyB8C-5eReOEy09lk37rNdcWFBewLlKf3MQ" 
 genai.configure(api_key=GENAI_API_KEY)
 
@@ -50,7 +48,6 @@ tools_config = [
     }
 ]
 
-# เลือกโมเดล (แนะนำ gemini-1.5-flash เพราะเร็วและราคาถูก/ฟรี)
 model = genai.GenerativeModel(
     model_name='gemini-2.5-flash',
     tools=tools_config,
@@ -60,45 +57,35 @@ model = genai.GenerativeModel(
 @app.post("/chat")
 async def chat_endpoint(message: UserMessage):
     print(f"User says: {message.text}")
-
-    # --- 3. ส่งข้อความให้ Gemini ประมวลผล ---
-    # เราส่ง chat history แบบสั้นๆ ไปเพื่อให้มันทำงานจบในรอบเดียว
     chat = model.start_chat(enable_automatic_function_calling=False) 
-    # หมายเหตุ: เราปิด automatic_function_calling เพราะเราไม่ได้จะรันโค้ดบน Server 
-    # แต่เราต้องการดักจับคำสั่งเพื่อส่งไปให้มือถือทำแทน
 
     response = chat.send_message(message.text)
     
     reply_text = ""
     navigate_target = None
 
-    # --- 4. แกะกล่องของขวัญจาก Gemini ---
-    # ตรวจสอบว่า Gemini ส่ง Function Call กลับมาหรือไม่
     try:
         part = response.candidates[0].content.parts[0]
         
         if part.function_call:
-            # กรณี Gemini สั่งเปลี่ยนหน้า
             fc = part.function_call
             if fc.name == "navigate_app":
-                # ดึงค่า arguments ออกมา
                 args = dict(fc.args) 
                 navigate_target = args.get("destination")
                 
                 reply_text = f"รับทราบครับ! (Gemini สั่งย้ายไปหน้า {navigate_target})"
                 print(f"--- Action Detected: Move to {navigate_target} ---")
         else:
-            # กรณีคุยเล่นปกติ (ไม่มี function call)
             reply_text = part.text
             
     except Exception as e:
         print(f"Error parsing response: {e}")
         reply_text = "ระบบขัดข้องชั่วคราวครับ"
 
-    # --- 5. ส่ง JSON กลับไปให้ React Native / Web ---
     return {
         "reply": reply_text,
         "navigate_to": navigate_target
     }
+
 
 # วิธีรัน: uvicorn server:app --host 0.0.0.0 --port 8000 --reload
